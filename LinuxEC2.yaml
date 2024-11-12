@@ -1,0 +1,105 @@
+#######
+#
+#RHEL application server package, hosted in ELB ASG of 1 (It cannot be autoscaled with current design)
+#######
+---
+Type:                            "aws/autoscale"
+Stage:                           "02"
+Persist:                         false
+IngressPoint:                    true
+Configuration:
+  BakeInstance:
+    Type:                        "AWS::EC2::Instance"
+    Metadata:
+      AWS::CloudFormation::Init:
+        config:
+          commands:
+            bootstrap:
+              command:           'bash bootstrap.sh'
+              cwd:               '/root/payload'
+    Properties:
+      #ImageId:                   "ami-05789073821"
+      InstanceType:              "t4g.medium"
+      BlockDeviceMappings:
+        - DeviceName:            "/dev/xvdf"
+          Ebs:
+            VolumeSize:          "150"
+        - DeviceName:            "/dev/xvdh"
+          Ebs:
+            VolumeSize :         "30"
+    CreationPolicy:
+        ResourceSignal:
+          Timeout:               'PT59M'
+  LoadBalancer:
+    Type:                        "AWS::ElasticLoadBalancing::LoadBalancer"
+    Properties:
+      Listeners:
+# Real time application listeners required from QIP
+        - LoadBalancerPort:      "443"
+          InstancePort:          "443"
+          Protocol:              "HTTPS"
+        - LoadBalancerPort:      "80"
+          InstancePort:          "80"
+          Protocol:              "HTTP"
+      HealthCheck:
+        HealthyThreshold:        "6"
+        Interval:                "10"
+        Target:                  "TCP:22"
+        Timeout:                 "5"
+        UnhealthyThreshold:      "6"
+      ConnectionSettings:
+        IdleTimeout:             3600
+  AutoScalingGroup:
+    Type:                        "AWS::AutoScaling::AutoScalingGroup"
+    Properties:
+      MinSize:                   1
+      MaxSize:                   1
+      HealthCheckGracePeriod:    600
+    CreationPolicy:
+        ResourceSignal:
+          Timeout:  'PT59M'
+  LaunchConfiguration:
+    Type:                        "AWS::AutoScaling::LaunchConfiguration"
+    Metadata:
+      AWS::CloudFormation::Init:
+        config:
+          commands:
+            bootstrap:
+              command:           'bash deploy.sh'
+              cwd:               '/usr/local/bin'
+    Properties:
+      InstanceType:              "t4g.medium"
+      BlockDeviceMappings:
+        - DeviceName:            "/dev/xvdf"
+          Ebs:
+            VolumeSize :         "150"
+        - DeviceName:            "/dev/xvdh"
+          Ebs:
+            VolumeSize :         "30"
+Environments:
+  DEV:
+    Configuration:
+      Features:
+        Type: "Pipeline::Features"
+        Properties:
+          Features:
+            Datadog: disabled
+            Qualys:
+              Enabled: true
+              Recipients: ["sugasinilatha@yahoo.com"]
+      LaunchConfiguration:
+        Properties:
+          InstanceType: "t4g.small"
+  PROD:
+    Configuration:
+      Features:
+        Type: "Pipeline::Features"
+        Properties:
+          Features:
+            Datadog: enabled
+            Qualys:
+              Enabled: true
+              Recipients: ["sugasinilatha@yahoo.com"]
+      LaunchConfiguration:
+        Properties:
+          InstanceType: "t4g.small"
